@@ -13,12 +13,27 @@ public class LevelGenerator : MonoBehaviour
     static readonly Color FLOOR_CASTLE = new Color(0.25f, 0.24f, 0.22f);
     static readonly Color WALL_PIRATE = new Color(0.12f, 0.08f, 0.04f);
     static readonly Color WALL_CASTLE = new Color(0.15f, 0.14f, 0.13f);
-    static readonly Color DOOR_LOCKED = new Color(0.6f, 0.15f, 0.15f);
     static readonly Color DOOR_EXIT = new Color(0.7f, 0.2f, 0.2f);
-    static readonly Color PLAYER_COLOR = new Color(0.3f, 0.55f, 0.85f);
-    static readonly Color ENEMY_COLOR = new Color(0.15f, 0.05f, 0.2f);
     static readonly Color KEY_COLOR = new Color(1f, 0.85f, 0.2f);
-    static readonly Color HINT_COLOR = new Color(0.3f, 0.8f, 0.9f);
+    static readonly Color SAFE_ZONE_COLOR = new Color(0.2f, 0.6f, 0.3f, 0.08f);
+
+    public static readonly string[] ORB_COLOR_IDS = { "cyan", "magenta", "yellow" };
+    public static readonly Color[] ORB_COLORS =
+    {
+        new Color(0.0f, 0.9f, 0.9f),
+        new Color(0.9f, 0.0f, 0.9f),
+        new Color(1.0f, 0.9f, 0.2f),
+    };
+
+    public static Vector2 entrancePos = new Vector2(1.5f, 1.5f);
+    public static Vector2 exitPos;
+    public static float safeZoneRadius = 3.5f;
+
+    public const float CELL = 1f;
+    public bool[,] grid;
+    public bool[,] reachable;
+    public int gridW,
+        gridH;
 
     void Awake()
     {
@@ -45,7 +60,6 @@ public class LevelGenerator : MonoBehaviour
     void InitializeLevels()
     {
         levels = new LevelConfig[5];
-
         levels[0] = new LevelConfig
         {
             name = "The Brig",
@@ -55,12 +69,9 @@ public class LevelGenerator : MonoBehaviour
             enemyCount = 2,
             hasHiddenPassage = false,
             hasPuzzle = false,
-            hasSymbolDoor = false,
-            hintColors = new Color[] { HINT_COLOR },
             enemySpeed = 2f,
             enemySightRange = 4.5f,
         };
-
         levels[1] = new LevelConfig
         {
             name = "Cargo Hold",
@@ -70,59 +81,42 @@ public class LevelGenerator : MonoBehaviour
             enemyCount = 3,
             hasHiddenPassage = true,
             hasPuzzle = false,
-            hasSymbolDoor = false,
-            hintColors = new Color[] { HINT_COLOR, new Color(0.9f, 0.7f, 0.2f) },
             enemySpeed = 2.5f,
             enemySightRange = 5f,
         };
-
         levels[2] = new LevelConfig
         {
             name = "Captain's Quarters",
             width = 22,
             height = 16,
             theme = LevelTheme.PirateShip,
-            enemyCount = 4,
+            enemyCount = 2,
             hasHiddenPassage = true,
             hasPuzzle = true,
-            hasSymbolDoor = true,
-            symbolSequence = new int[] { 0, 3, 1, 4 },
-            puzzleType = PuzzleManager.PuzzleMode.Sequence,
-            hintColors = new Color[] { HINT_COLOR, new Color(0.8f, 0.4f, 0.9f) },
             enemySpeed = 2.8f,
             enemySightRange = 5.5f,
         };
-
         levels[3] = new LevelConfig
         {
             name = "Castle Dungeon",
             width = 24,
             height = 18,
             theme = LevelTheme.Castle,
-            enemyCount = 5,
+            enemyCount = 2,
             hasHiddenPassage = true,
             hasPuzzle = true,
-            hasSymbolDoor = true,
-            symbolSequence = new int[] { 2, 5, 0, 3 },
-            puzzleType = PuzzleManager.PuzzleMode.TimedSequence,
-            hintColors = new Color[] { HINT_COLOR, new Color(0.9f, 0.3f, 0.3f) },
             enemySpeed = 3.2f,
             enemySightRange = 6f,
         };
-
         levels[4] = new LevelConfig
         {
             name = "Throne Room",
             width = 26,
             height = 20,
             theme = LevelTheme.Castle,
-            enemyCount = 6,
+            enemyCount = 3,
             hasHiddenPassage = true,
             hasPuzzle = true,
-            hasSymbolDoor = true,
-            symbolSequence = new int[] { 4, 4, 4, 1 },
-            puzzleType = PuzzleManager.PuzzleMode.TimedSequence,
-            hintColors = new Color[] { new Color(1f, 0.85f, 0.3f), new Color(0.6f, 0.2f, 0.8f) },
             enemySpeed = 3.8f,
             enemySightRange = 6.5f,
         };
@@ -133,18 +127,15 @@ public class LevelGenerator : MonoBehaviour
         if (currentLevelRoot != null)
             Destroy(currentLevelRoot);
         currentLevelRoot = new GameObject($"Level_{levelIndex}");
-
         var config = levels[Mathf.Clamp(levelIndex, 0, levels.Length - 1)];
-        int seed = GameManager.Instance.runSeed + levelIndex * 1000;
-        Random.InitState(seed);
-
+        Random.InitState(GameManager.Instance.runSeed + levelIndex * 1000);
         BuildRoom(config);
     }
 
     void BuildRoom(LevelConfig config)
     {
-        float w = config.width;
-        float h = config.height;
+        float w = config.width,
+            h = config.height;
         Color floorCol = config.theme == LevelTheme.PirateShip ? FLOOR_PIRATE : FLOOR_CASTLE;
         Color wallCol = config.theme == LevelTheme.PirateShip ? WALL_PIRATE : WALL_CASTLE;
 
@@ -183,147 +174,553 @@ public class LevelGenerator : MonoBehaviour
             line.transform.parent = currentLevelRoot.transform;
         }
 
-        CreateWall("WallN", new Vector2(w / 2f, h + 0.25f), new Vector2(w + 1, 0.5f), wallCol);
-        CreateWall("WallS", new Vector2(w / 2f, -0.25f), new Vector2(w + 1, 0.5f), wallCol);
-        CreateWall("WallE", new Vector2(w + 0.25f, h / 2f), new Vector2(0.5f, h + 1), wallCol);
-        CreateWall("WallW", new Vector2(-0.25f, h / 2f), new Vector2(0.5f, h + 1), wallCol);
+        CreateWallObj("WallN", new Vector2(w / 2f, h + 0.25f), new Vector2(w + 1, 0.5f), wallCol);
+        CreateWallObj("WallS", new Vector2(w / 2f, -0.25f), new Vector2(w + 1, 0.5f), wallCol);
+        CreateWallObj("WallE", new Vector2(w + 0.25f, h / 2f), new Vector2(0.5f, h + 1), wallCol);
+        CreateWallObj("WallW", new Vector2(-0.25f, h / 2f), new Vector2(0.5f, h + 1), wallCol);
 
-        BuildInternalWalls(config, w, h, wallCol);
+        exitPos = new Vector2(w - 2, h - 0.5f);
+
+        BuildGrid(config, wallCol);
 
         SpawnPlayer(new Vector2(1.5f, 1.5f));
-
+        PlaceSafeZone("EntranceSafe", entrancePos);
+        PlaceSafeZone("ExitSafe", exitPos);
         PlaceExitDoor(config, w, h);
 
-        if (!config.hasSymbolDoor && !config.hasPuzzle)
+        if (!config.hasPuzzle)
             PlaceKey(config, w, h);
-
         PlaceEnemies(config, w, h);
-
-        PlaceHints(config, w, h);
-
         if (config.hasPuzzle)
             PlacePuzzle(config, w, h);
-
         if (config.hasHiddenPassage)
             PlaceHiddenPassage(config, w, h, wallCol);
     }
 
-    void BuildInternalWalls(LevelConfig config, float w, float h, Color wallCol)
+    void BuildGrid(LevelConfig config, Color wallCol)
     {
-        int cellsX = Mathf.Max(3, config.width / 4);
-        int cellsY = Mathf.Max(3, config.height / 4);
-        float cellW = w / cellsX;
-        float cellH = h / cellsY;
+        gridW = config.width;
+        gridH = config.height;
+        grid = new bool[gridW, gridH];
 
-        int wallIdx = 0;
-
-        for (int cx = 1; cx < cellsX; cx++)
+        int shapeCount = Mathf.Max(4, (gridW * gridH) / 40);
+        for (int i = 0; i < shapeCount; i++)
         {
-            float x = cx * cellW;
-            int gapCount = Random.Range(1, 3);
-            float segStart = 1f;
-
-            float[] gaps = new float[gapCount];
-            for (int g = 0; g < gapCount; g++)
-                gaps[g] = Random.Range(2f, h - 2f);
-            System.Array.Sort(gaps);
-
-            for (int g = 0; g <= gapCount; g++)
+            int shape = Random.Range(0, 3);
+            switch (shape)
             {
-                float segEnd = g < gapCount ? gaps[g] - 0.8f : h - 1f;
-                if (segEnd > segStart + 1f)
-                {
-                    float segLen = segEnd - segStart;
-                    float segMid = (segStart + segEnd) / 2f;
-                    Vector2 pos = new Vector2(x, segMid);
-
-                    if (
-                        Vector2.Distance(pos, new Vector2(1.5f, 1.5f)) > 2.5f
-                        && Vector2.Distance(pos, new Vector2(w - 2, h - 1)) > 2.5f
-                    )
-                    {
-                        CreateWall($"MWallV_{wallIdx++}", pos, new Vector2(0.5f, segLen), wallCol);
-                    }
-                }
-                segStart = g < gapCount ? gaps[g] + 0.8f : h;
+                case 0:
+                    StampRect();
+                    break;
+                case 1:
+                    StampL();
+                    break;
+                case 2:
+                    StampU();
+                    break;
             }
         }
 
-        for (int cy = 1; cy < cellsY; cy++)
+        int protCount = Mathf.Max(3, (gridW + gridH) / 8);
+        for (int i = 0; i < protCount; i++)
+            StampProtrusion();
+
+        WidenNarrowPassages();
+        EnsureConnectivity();
+        WidenNarrowPassages();
+        FloodFillReachable();
+        RenderGrid(wallCol);
+    }
+
+    bool IsSafeCell(int gx, int gy)
+    {
+        float wx = gx + 0.5f,
+            wy = gy + 0.5f;
+        return Vector2.Distance(new Vector2(wx, wy), entrancePos) < safeZoneRadius + 1f
+            || Vector2.Distance(new Vector2(wx, wy), exitPos) < safeZoneRadius + 1f;
+    }
+
+    void SetWall(int x, int y)
+    {
+        if (x < 1 || x >= gridW - 1 || y < 1 || y >= gridH - 1)
+            return;
+        if (IsSafeCell(x, y))
+            return;
+        grid[x, y] = true;
+    }
+
+    void StampRect()
+    {
+        int bw = Random.Range(2, 5);
+        int bh = Random.Range(1, 3);
+        if (Random.value > 0.5f)
         {
-            float y = cy * cellH;
-            int gapCount = Random.Range(1, 3);
-            float segStart = 1f;
+            int t = bw;
+            bw = bh;
+            bh = t;
+        }
+        int sx = Random.Range(2, gridW - bw - 2);
+        int sy = Random.Range(2, gridH - bh - 2);
+        for (int x = sx; x < sx + bw; x++)
+        for (int y = sy; y < sy + bh; y++)
+            SetWall(x, y);
+    }
 
-            float[] gaps = new float[gapCount];
-            for (int g = 0; g < gapCount; g++)
-                gaps[g] = Random.Range(2f, w - 2f);
-            System.Array.Sort(gaps);
+    void StampL()
+    {
+        int armA = Random.Range(3, 6);
+        int armB = Random.Range(2, 4);
+        int sx = Random.Range(2, gridW - armA - 2);
+        int sy = Random.Range(2, gridH - armB - 2);
+        bool horiz = Random.value > 0.5f;
 
-            for (int g = 0; g <= gapCount; g++)
+        if (horiz)
+        {
+            for (int x = sx; x < sx + armA; x++)
+                SetWall(x, sy);
+            int endX = Random.value > 0.5f ? sx : sx + armA - 1;
+            int dir = Random.value > 0.5f ? 1 : -1;
+            for (int i = 1; i <= armB; i++)
+                SetWall(endX, sy + i * dir);
+        }
+        else
+        {
+            for (int y = sy; y < sy + armA; y++)
+                SetWall(sx, y);
+            int endY = Random.value > 0.5f ? sy : sy + armA - 1;
+            int dir = Random.value > 0.5f ? 1 : -1;
+            for (int i = 1; i <= armB; i++)
+                SetWall(sx + i * dir, endY);
+        }
+    }
+
+    void StampU()
+    {
+        int baseLen = Random.Range(3, 6);
+        int armLen = Random.Range(2, 4);
+        int sx = Random.Range(2, gridW - baseLen - 2);
+        int sy = Random.Range(2, gridH - armLen - 2);
+        bool horiz = Random.value > 0.5f;
+
+        if (horiz)
+        {
+            for (int x = sx; x < sx + baseLen; x++)
+                SetWall(x, sy);
+            for (int i = 1; i <= armLen; i++)
             {
-                float segEnd = g < gapCount ? gaps[g] - 0.8f : w - 1f;
-                if (segEnd > segStart + 1f)
-                {
-                    float segLen = segEnd - segStart;
-                    float segMid = (segStart + segEnd) / 2f;
-                    Vector2 pos = new Vector2(segMid, y);
-
-                    if (
-                        Vector2.Distance(pos, new Vector2(1.5f, 1.5f)) > 2.5f
-                        && Vector2.Distance(pos, new Vector2(w - 2, h - 1)) > 2.5f
-                    )
-                    {
-                        CreateWall($"MWallH_{wallIdx++}", pos, new Vector2(segLen, 0.5f), wallCol);
-                    }
-                }
-                segStart = g < gapCount ? gaps[g] + 0.8f : w;
+                SetWall(sx, sy + i);
+                SetWall(sx + baseLen - 1, sy + i);
             }
         }
-
-        int pillarCount = config.width / 5;
-        for (int i = 0; i < pillarCount; i++)
+        else
         {
-            float px = Random.Range(3f, w - 3f);
-            float py = Random.Range(3f, h - 3f);
-            Vector2 ppos = new Vector2(px, py);
-
-            if (Vector2.Distance(ppos, new Vector2(1.5f, 1.5f)) < 2.5f)
-                continue;
-            if (Vector2.Distance(ppos, new Vector2(w - 2, h - 1)) < 2.5f)
-                continue;
-
-            float armLen = Random.Range(1f, 2.5f);
-            bool horiz = Random.value > 0.5f;
-            CreateWall(
-                $"Pillar_{wallIdx++}",
-                ppos,
-                horiz ? new Vector2(armLen, 0.5f) : new Vector2(0.5f, armLen),
-                wallCol
-            );
-
-            if (Random.value < 0.5f)
+            for (int y = sy; y < sy + baseLen; y++)
+                SetWall(sx, y);
+            for (int i = 1; i <= armLen; i++)
             {
-                Vector2 armOffset = horiz
-                    ? new Vector2(armLen * 0.4f, armLen * 0.3f)
-                    : new Vector2(armLen * 0.3f, armLen * 0.4f);
-                CreateWall(
-                    $"PillarArm_{wallIdx++}",
-                    ppos + armOffset,
-                    horiz ? new Vector2(0.5f, armLen * 0.6f) : new Vector2(armLen * 0.6f, 0.5f),
-                    wallCol
-                );
+                SetWall(sx + i, sy);
+                SetWall(sx + i, sy + baseLen - 1);
             }
         }
     }
 
-    GameObject CreateWall(string name, Vector2 pos, Vector2 scale, Color color)
+    void StampProtrusion()
+    {
+        int wall = Random.Range(0, 4);
+        int len = Random.Range(2, 5);
+        switch (wall)
+        {
+            case 0:
+            {
+                int x = Random.Range(3, gridW - 3);
+                for (int i = 0; i < len; i++)
+                    SetWall(x, gridH - 2 - i);
+                break;
+            }
+            case 1:
+            {
+                int x = Random.Range(3, gridW - 3);
+                for (int i = 0; i < len; i++)
+                    SetWall(x, 1 + i);
+                break;
+            }
+            case 2:
+            {
+                int y = Random.Range(3, gridH - 3);
+                for (int i = 0; i < len; i++)
+                    SetWall(gridW - 2 - i, y);
+                break;
+            }
+            case 3:
+            {
+                int y = Random.Range(3, gridH - 3);
+                for (int i = 0; i < len; i++)
+                    SetWall(1 + i, y);
+                break;
+            }
+        }
+    }
+
+    void WidenNarrowPassages()
+    {
+        bool changed = true;
+        int iterations = 0;
+        while (changed && iterations < 15)
+        {
+            changed = false;
+            iterations++;
+            bool[,] toRemove = new bool[gridW, gridH];
+
+            for (int x = 1; x < gridW - 1; x++)
+            {
+                for (int y = 1; y < gridH - 1; y++)
+                {
+                    if (grid[x, y])
+                        continue;
+                    if (IsSafeCell(x, y))
+                        continue;
+
+                    int hSpan = HSpan(x, y);
+                    int vSpan = VSpan(x, y);
+
+                    if (hSpan < 3 && vSpan < 3)
+                    {
+                        for (int dx = -1; dx <= 1; dx++)
+                        for (int dy = -1; dy <= 1; dy++)
+                        {
+                            int nx = x + dx,
+                                ny = y + dy;
+                            if (nx >= 1 && nx < gridW - 1 && ny >= 1 && ny < gridH - 1)
+                                if (grid[nx, ny])
+                                    toRemove[nx, ny] = true;
+                        }
+                    }
+                }
+            }
+
+            for (int x = 0; x < gridW; x++)
+            for (int y = 0; y < gridH; y++)
+                if (toRemove[x, y])
+                {
+                    grid[x, y] = false;
+                    changed = true;
+                }
+        }
+    }
+
+    int HSpan(int x, int y)
+    {
+        int count = 1;
+        for (int dx = 1; x + dx < gridW && !grid[x + dx, y]; dx++)
+            count++;
+        for (int dx = -1; x + dx >= 0 && !grid[x + dx, y]; dx--)
+            count++;
+        return count;
+    }
+
+    int VSpan(int x, int y)
+    {
+        int count = 1;
+        for (int dy = 1; y + dy < gridH && !grid[x, y + dy]; dy++)
+            count++;
+        for (int dy = -1; y + dy >= 0 && !grid[x, y + dy]; dy--)
+            count++;
+        return count;
+    }
+
+    void EnsureConnectivity()
+    {
+        FloodFillReachable();
+
+        bool[,] visited = new bool[gridW, gridH];
+        for (int x = 0; x < gridW; x++)
+        for (int y = 0; y < gridH; y++)
+            visited[x, y] = grid[x, y] || reachable[x, y];
+
+        for (int x = 1; x < gridW - 1; x++)
+        {
+            for (int y = 1; y < gridH - 1; y++)
+            {
+                if (visited[x, y])
+                    continue;
+                CarveCorridorToReachable(x, y);
+                FloodFillReachable();
+                for (int ax = 0; ax < gridW; ax++)
+                for (int ay = 0; ay < gridH; ay++)
+                    visited[ax, ay] = grid[ax, ay] || reachable[ax, ay];
+            }
+        }
+    }
+
+    void CarveCorridorToReachable(int fromX, int fromY)
+    {
+        var queue = new Queue<(int x, int y)>();
+        var cameFrom = new Dictionary<(int, int), (int, int)>();
+        queue.Enqueue((fromX, fromY));
+        cameFrom[(fromX, fromY)] = (-1, -1);
+
+        (int tx, int ty) = (-1, -1);
+
+        while (queue.Count > 0)
+        {
+            var (cx, cy) = queue.Dequeue();
+
+            if (reachable[cx, cy])
+            {
+                tx = cx;
+                ty = cy;
+                break;
+            }
+
+            int[] dx = { 1, -1, 0, 0 };
+            int[] dy = { 0, 0, 1, -1 };
+            for (int d = 0; d < 4; d++)
+            {
+                int nx = cx + dx[d],
+                    ny = cy + dy[d];
+                if (nx < 1 || nx >= gridW - 1 || ny < 1 || ny >= gridH - 1)
+                    continue;
+                if (cameFrom.ContainsKey((nx, ny)))
+                    continue;
+                cameFrom[(nx, ny)] = (cx, cy);
+                queue.Enqueue((nx, ny));
+            }
+        }
+
+        if (tx < 0)
+            return;
+
+        var cur = (tx, ty);
+        while (cur != (-1, -1))
+        {
+            int cx = cur.Item1,
+                cy = cur.Item2;
+            for (int ddx = -1; ddx <= 1; ddx++)
+            for (int ddy = -1; ddy <= 1; ddy++)
+            {
+                int nx = cx + ddx,
+                    ny = cy + ddy;
+                if (nx >= 1 && nx < gridW - 1 && ny >= 1 && ny < gridH - 1)
+                    grid[nx, ny] = false;
+            }
+            cur = cameFrom.ContainsKey(cur) ? cameFrom[cur] : (-1, -1);
+        }
+    }
+
+    void FloodFillReachable()
+    {
+        reachable = new bool[gridW, gridH];
+        int sx = Mathf.Clamp(Mathf.FloorToInt(entrancePos.x), 0, gridW - 1);
+        int sy = Mathf.Clamp(Mathf.FloorToInt(entrancePos.y), 0, gridH - 1);
+        grid[sx, sy] = false;
+
+        var queue = new Queue<(int, int)>();
+        queue.Enqueue((sx, sy));
+        reachable[sx, sy] = true;
+
+        while (queue.Count > 0)
+        {
+            var (cx, cy) = queue.Dequeue();
+            int[] dx = { 1, -1, 0, 0 };
+            int[] dy = { 0, 0, 1, -1 };
+            for (int d = 0; d < 4; d++)
+            {
+                int nx = cx + dx[d],
+                    ny = cy + dy[d];
+                if (nx < 0 || nx >= gridW || ny < 0 || ny >= gridH)
+                    continue;
+                if (reachable[nx, ny] || grid[nx, ny])
+                    continue;
+                reachable[nx, ny] = true;
+                queue.Enqueue((nx, ny));
+            }
+        }
+    }
+
+    void RenderGrid(Color wallCol)
+    {
+        int idx = 0;
+        for (int y = 0; y < gridH; y++)
+        {
+            int runStart = -1;
+            for (int x = 0; x <= gridW; x++)
+            {
+                bool isWall = x < gridW && grid[x, y];
+                if (isWall && runStart < 0)
+                    runStart = x;
+                else if (!isWall && runStart >= 0)
+                {
+                    int runLen = x - runStart;
+                    float cx = runStart + runLen / 2f;
+                    float cy = y + 0.5f;
+                    CreateWallObj(
+                        $"W{idx++}",
+                        new Vector2(cx, cy),
+                        new Vector2(runLen, 1f),
+                        wallCol
+                    );
+                    runStart = -1;
+                }
+            }
+        }
+    }
+
+    public List<Vector2> FindPath(Vector2 from, Vector2 to, float maxDist)
+    {
+        if (grid == null)
+            return null;
+
+        int sx = Mathf.Clamp(Mathf.FloorToInt(from.x), 0, gridW - 1);
+        int sy = Mathf.Clamp(Mathf.FloorToInt(from.y), 0, gridH - 1);
+        int tx = Mathf.Clamp(Mathf.FloorToInt(to.x), 0, gridW - 1);
+        int ty = Mathf.Clamp(Mathf.FloorToInt(to.y), 0, gridH - 1);
+
+        if (grid[tx, ty])
+        {
+            var near = NearestFloor(tx, ty);
+            if (near.HasValue)
+            {
+                tx = near.Value.x;
+                ty = near.Value.y;
+            }
+            else
+                return null;
+        }
+
+        var cameFrom = new Dictionary<(int, int), (int, int)>();
+        var queue = new Queue<(int, int)>();
+        queue.Enqueue((sx, sy));
+        cameFrom[(sx, sy)] = (-1, -1);
+        int maxCells = 2000;
+        int visited = 0;
+
+        while (queue.Count > 0 && visited < maxCells)
+        {
+            var (cx, cy) = queue.Dequeue();
+            visited++;
+
+            if (cx == tx && cy == ty)
+            {
+                var path = new List<Vector2>();
+                var cur = (tx, ty);
+                while (cur != (-1, -1))
+                {
+                    path.Add(new Vector2(cur.Item1 + 0.5f, cur.Item2 + 0.5f));
+                    cur = cameFrom[cur];
+                }
+                path.Reverse();
+                return path;
+            }
+
+            int[] dx = { 1, -1, 1, -1, 1, -1, 0, 0 };
+            int[] dy = { 1, 1, -1, -1, 0, 0, 1, -1 };
+            for (int d = 0; d < 8; d++)
+            {
+                int nx = cx + dx[d],
+                    ny = cy + dy[d];
+                if (nx < 0 || nx >= gridW || ny < 0 || ny >= gridH)
+                    continue;
+                if (grid[nx, ny] || cameFrom.ContainsKey((nx, ny)))
+                    continue;
+                if (d < 4 && (grid[cx + dx[d], cy] || grid[cx, cy + dy[d]]))
+                    continue;
+                float distFromStart = Vector2.Distance(new Vector2(nx + 0.5f, ny + 0.5f), from);
+                if (distFromStart > maxDist)
+                    continue;
+                cameFrom[(nx, ny)] = (cx, cy);
+                queue.Enqueue((nx, ny));
+            }
+        }
+        return null;
+    }
+
+    (int x, int y)? NearestFloor(int gx, int gy)
+    {
+        for (int r = 1; r < 8; r++)
+        for (int dx = -r; dx <= r; dx++)
+        for (int dy = -r; dy <= r; dy++)
+        {
+            int nx = gx + dx,
+                ny = gy + dy;
+            if (nx >= 0 && nx < gridW && ny >= 0 && ny < gridH && !grid[nx, ny])
+                return (nx, ny);
+        }
+        return null;
+    }
+
+    Vector2 FindCellCenter(float minX, float maxX, float minY, float maxY, int maxAttempts = 60)
+    {
+        int gxMin = Mathf.Max(1, Mathf.FloorToInt(minX));
+        int gxMax = Mathf.Min(gridW - 2, Mathf.FloorToInt(maxX));
+        int gyMin = Mathf.Max(1, Mathf.FloorToInt(minY));
+        int gyMax = Mathf.Min(gridH - 2, Mathf.FloorToInt(maxY));
+
+        for (int attempt = 0; attempt < maxAttempts; attempt++)
+        {
+            int gx = Random.Range(gxMin, gxMax + 1);
+            int gy = Random.Range(gyMin, gyMax + 1);
+            if (!grid[gx, gy] && reachable[gx, gy])
+                return new Vector2(gx + 0.5f, gy + 0.5f);
+        }
+        for (int gx = gxMin; gx <= gxMax; gx++)
+        for (int gy = gyMin; gy <= gyMax; gy++)
+            if (!grid[gx, gy] && reachable[gx, gy])
+                return new Vector2(gx + 0.5f, gy + 0.5f);
+
+        return new Vector2(gridW / 2f + 0.5f, gridH / 2f + 0.5f);
+    }
+
+    Vector2 FindCellCenterAwayFrom(
+        float minX,
+        float maxX,
+        float minY,
+        float maxY,
+        List<Vector2> avoid,
+        float minDist,
+        int maxAttempts = 80
+    )
+    {
+        int gxMin = Mathf.Max(1, Mathf.FloorToInt(minX));
+        int gxMax = Mathf.Min(gridW - 2, Mathf.FloorToInt(maxX));
+        int gyMin = Mathf.Max(1, Mathf.FloorToInt(minY));
+        int gyMax = Mathf.Min(gridH - 2, Mathf.FloorToInt(maxY));
+
+        for (int attempt = 0; attempt < maxAttempts; attempt++)
+        {
+            int gx = Random.Range(gxMin, gxMax + 1);
+            int gy = Random.Range(gyMin, gyMax + 1);
+            if (grid[gx, gy] || !reachable[gx, gy])
+                continue;
+
+            Vector2 pos = new Vector2(gx + 0.5f, gy + 0.5f);
+            bool tooClose = false;
+            foreach (var a in avoid)
+                if (Vector2.Distance(pos, a) < minDist)
+                {
+                    tooClose = true;
+                    break;
+                }
+            if (!tooClose)
+                return pos;
+        }
+        return FindCellCenter(minX, maxX, minY, maxY);
+    }
+
+    public bool IsFloorAndReachable(float wx, float wy)
+    {
+        int gx = Mathf.FloorToInt(wx),
+            gy = Mathf.FloorToInt(wy);
+        if (gx < 0 || gx >= gridW || gy < 0 || gy >= gridH)
+            return false;
+        return !grid[gx, gy] && reachable[gx, gy];
+    }
+
+    GameObject CreateWallObj(string name, Vector2 pos, Vector2 scale, Color color)
     {
         var wall = CreateSprite(name, pos, SpriteFactory.CreateRect(16, 16), color, 3);
         wall.transform.localScale = new Vector3(scale.x, scale.y, 1);
         wall.transform.parent = currentLevelRoot.transform;
-
-        var col = wall.AddComponent<BoxCollider2D>();
+        wall.AddComponent<BoxCollider2D>();
         wall.layer = LayerMask.NameToLayer("Default");
         wall.isStatic = true;
         return wall;
@@ -337,27 +734,22 @@ public class LevelGenerator : MonoBehaviour
             var sr = obj.AddComponent<SpriteRenderer>();
             sr.sprite = SpriteFactory.CreatePlayerSprite();
             sr.sortingOrder = 10;
-
+            obj.transform.localScale = Vector3.one * 0.735f;
             var rb = obj.AddComponent<Rigidbody2D>();
             rb.gravityScale = 0;
             rb.freezeRotation = true;
             rb.collisionDetectionMode = CollisionDetectionMode2D.Continuous;
-
             var col = obj.AddComponent<BoxCollider2D>();
-            col.size = new Vector2(0.6f, 0.6f);
-
+            col.size = new Vector2(0.5f, 0.5f);
             obj.AddComponent<PlayerController>();
             obj.AddComponent<PlayerInventory>();
             obj.tag = "Player";
-
             currentPlayer = obj.GetComponent<PlayerController>();
             DontDestroyOnLoad(obj);
         }
-
         currentPlayer.transform.position = new Vector3(pos.x, pos.y, 0);
         currentPlayer.SetCanMove(true);
-        var inv = currentPlayer.GetComponent<PlayerInventory>();
-        inv?.Clear();
+        currentPlayer.GetComponent<PlayerInventory>()?.Clear();
 
         var cam = Camera.main;
         if (cam != null)
@@ -372,10 +764,15 @@ public class LevelGenerator : MonoBehaviour
         }
     }
 
+    void PlaceSafeZone(string name, Vector2 center)
+    {
+        var zone = CreateSprite(name, center, SpriteFactory.CreateCircle(32), SAFE_ZONE_COLOR, 2);
+        zone.transform.localScale = Vector3.one * safeZoneRadius * 2f;
+        zone.transform.parent = currentLevelRoot.transform;
+    }
+
     void PlaceExitDoor(LevelConfig config, float w, float h)
     {
-        Vector2 exitPos = new Vector2(w - 2, h - 0.5f);
-
         var doorObj = CreateSprite(
             "ExitDoor",
             exitPos,
@@ -384,20 +781,11 @@ public class LevelGenerator : MonoBehaviour
             5
         );
         doorObj.transform.parent = currentLevelRoot.transform;
-
         var col = doorObj.AddComponent<BoxCollider2D>();
         col.size = new Vector2(1f, 1f);
-
         var door = doorObj.AddComponent<Door>();
         door.isExitDoor = true;
-
-        if (config.hasSymbolDoor)
-        {
-            door.doorType = Door.DoorType.Symbol;
-            door.requiredSymbolSequence = config.symbolSequence;
-            door.isLocked = true;
-        }
-        else if (config.hasPuzzle)
+        if (config.hasPuzzle)
         {
             door.doorType = Door.DoorType.Puzzle;
             door.isLocked = true;
@@ -422,46 +810,20 @@ public class LevelGenerator : MonoBehaviour
 
     void PlaceKey(LevelConfig config, float w, float h)
     {
-        float kx,
-            ky;
-        int placement = Random.Range(0, 3);
-        if (placement == 0)
-        {
-            kx = Random.Range(w * 0.6f, w - 2f);
-            ky = Random.Range(1.5f, h * 0.35f);
-        }
-        else if (placement == 1)
-        {
-            kx = Random.Range(1.5f, w * 0.3f);
-            ky = Random.Range(h * 0.6f, h - 2f);
-        }
-        else
-        {
-            kx = w * 0.5f + Random.Range(-2f, 2f);
-            ky = h * 0.5f + Random.Range(-2f, 2f);
-        }
-
-        var keyObj = CreateSprite(
-            "Key",
-            new Vector2(kx, ky),
-            SpriteFactory.CreateKeySprite(),
-            KEY_COLOR,
-            8
-        );
-        keyObj.transform.localScale = Vector3.one * 0.8f;
-        keyObj.transform.parent = currentLevelRoot.transform;
-
-        var col = keyObj.AddComponent<CircleCollider2D>();
+        Vector2 pos = FindCellCenter(2, w - 2, 2, h - 2);
+        var obj = CreateSprite("Key", pos, SpriteFactory.CreateKeySprite(), KEY_COLOR, 8);
+        obj.transform.localScale = Vector3.one * 0.8f;
+        obj.transform.parent = currentLevelRoot.transform;
+        var col = obj.AddComponent<CircleCollider2D>();
         col.radius = 0.4f;
-
-        var pickup = keyObj.AddComponent<PickupItem>();
+        var pickup = obj.AddComponent<PickupItem>();
         pickup.itemType = PickupItem.ItemType.Key;
         pickup.keyId = $"key_level_{GameManager.Instance.currentLevel}";
     }
 
     void PlaceEnemies(LevelConfig config, float w, float h)
     {
-        Color[] enemyColors =
+        Color[] eColors =
         {
             new Color(0.15f, 0.05f, 0.2f),
             new Color(0.1f, 0.1f, 0.15f),
@@ -472,37 +834,17 @@ public class LevelGenerator : MonoBehaviour
 
         for (int i = 0; i < config.enemyCount; i++)
         {
-            float ex,
-                ey;
+            Vector2 ePos = FindCellCenter(3, w - 3, 3, h - 3);
+            if (
+                Vector2.Distance(ePos, entrancePos) < safeZoneRadius + 2f
+                || Vector2.Distance(ePos, exitPos) < safeZoneRadius + 2f
+            )
+                ePos = FindCellCenter(w * 0.3f, w * 0.7f, h * 0.3f, h * 0.7f);
 
-            if (i == 0)
-            {
-                ex = w * 0.5f + Random.Range(-2f, 2f);
-                ey = h * 0.5f + Random.Range(-2f, 2f);
-            }
-            else if (i == 1)
-            {
-                ex = w - Random.Range(3f, 5f);
-                ey = h - Random.Range(3f, 5f);
-            }
-            else
-            {
-                float t = (float)i / config.enemyCount;
-                ex = Mathf.Lerp(3f, w - 3f, t) + Random.Range(-2f, 2f);
-                ey = Mathf.Lerp(3f, h - 3f, Random.value) + Random.Range(-1f, 1f);
-            }
-
-            ex = Mathf.Clamp(ex, 2f, w - 2f);
-            ey = Mathf.Clamp(ey, 2f, h - 2f);
-
-            if (Vector2.Distance(new Vector2(ex, ey), new Vector2(1.5f, 1.5f)) < 5f)
-                ey = Mathf.Max(h * 0.5f, ey);
-
-            Color eColor = enemyColors[i % enemyColors.Length];
             var enemyObj = CreateSprite(
                 $"Enemy_{i}",
-                new Vector2(ex, ey),
-                SpriteFactory.CreateEnemySprite(eColor),
+                ePos,
+                SpriteFactory.CreateEnemySprite(eColors[i % eColors.Length]),
                 Color.white,
                 10
             );
@@ -512,10 +854,11 @@ public class LevelGenerator : MonoBehaviour
             rb.gravityScale = 0;
             rb.freezeRotation = true;
             rb.collisionDetectionMode = CollisionDetectionMode2D.Continuous;
-
-            var col = enemyObj.AddComponent<BoxCollider2D>();
-            col.size = new Vector2(0.6f, 0.6f);
-            col.isTrigger = true;
+            var solidCol = enemyObj.AddComponent<CircleCollider2D>();
+            solidCol.radius = 0.25f;
+            var trigCol = enemyObj.AddComponent<CircleCollider2D>();
+            trigCol.radius = 0.3f;
+            trigCol.isTrigger = true;
 
             var enemy = enemyObj.AddComponent<EnemyAI>();
             enemy.patrolSpeed = config.enemySpeed;
@@ -523,81 +866,28 @@ public class LevelGenerator : MonoBehaviour
             enemy.sightRange = config.enemySightRange;
             enemy.obstacleLayer = LayerMask.GetMask("Default");
 
-            int pointCount = Random.Range(3, 6);
-            Vector2[] points = new Vector2[pointCount];
-            for (int p = 0; p < pointCount; p++)
+            int ptCount = Random.Range(3, 6);
+            Vector2[] pts = new Vector2[ptCount];
+            for (int p = 0; p < ptCount; p++)
             {
-                float px = Mathf.Clamp(ex + Random.Range(-4f, 4f), 2f, w - 2f);
-                float py = Mathf.Clamp(ey + Random.Range(-4f, 4f), 2f, h - 2f);
-                points[p] = new Vector2(px, py);
+                pts[p] = FindCellCenter(
+                    Mathf.Max(2, ePos.x - 5),
+                    Mathf.Min(w - 2, ePos.x + 5),
+                    Mathf.Max(2, ePos.y - 5),
+                    Mathf.Min(h - 2, ePos.y + 5)
+                );
             }
-            enemy.patrolPoints = points;
+            enemy.patrolPoints = pts;
             enemy.waitTimeAtPoint = Random.Range(0.5f, 1.5f);
-
             enemyObj.tag = "Enemy";
-
-            var trigger = enemyObj.AddComponent<EnemyCatchTrigger>();
-        }
-    }
-
-    void PlaceHints(LevelConfig config, float w, float h)
-    {
-        if (config.hintColors == null)
-            return;
-
-        for (int i = 0; i < config.hintColors.Length; i++)
-        {
-            float hx = Random.Range(2f, w - 2f);
-            float hy = Random.Range(2f, h - 2f);
-
-            var hintObj = CreateSprite(
-                $"Hint_{i}",
-                new Vector2(hx, hy),
-                SpriteFactory.CreateCircle(12),
-                config.hintColors[i],
-                7
-            );
-            hintObj.transform.localScale = Vector3.one * 0.5f;
-            hintObj.transform.parent = currentLevelRoot.transform;
-
-            var col = hintObj.AddComponent<CircleCollider2D>();
-            col.radius = 0.4f;
-
-            var pickup = hintObj.AddComponent<PickupItem>();
-            pickup.itemType = PickupItem.ItemType.Hint;
-            pickup.hintGlowColor = config.hintColors[i];
-
-            if (
-                config.hasSymbolDoor
-                && config.symbolSequence != null
-                && i < config.symbolSequence.Length
-            )
-            {
-                pickup.hintSprite = SpriteFactory.CreateSymbolSprite(config.symbolSequence[i]);
-            }
-
-            var glowObj = CreateSprite(
-                $"HintGlow_{i}",
-                new Vector2(hx, hy),
-                SpriteFactory.CreateCircle(32),
-                new Color(
-                    config.hintColors[i].r,
-                    config.hintColors[i].g,
-                    config.hintColors[i].b,
-                    0.1f
-                ),
-                2
-            );
-            glowObj.transform.localScale = Vector3.one * 2f;
-            glowObj.transform.parent = currentLevelRoot.transform;
+            enemyObj.AddComponent<EnemyCatchTrigger>();
         }
     }
 
     void PlacePuzzle(LevelConfig config, float w, float h)
     {
         Door exitDoor = null;
-        var doors = currentLevelRoot.GetComponentsInChildren<Door>();
-        foreach (var d in doors)
+        foreach (var d in currentLevelRoot.GetComponentsInChildren<Door>())
             if (d.isExitDoor)
             {
                 exitDoor = d;
@@ -607,68 +897,83 @@ public class LevelGenerator : MonoBehaviour
         var pmObj = new GameObject("PuzzleManager");
         pmObj.transform.parent = currentLevelRoot.transform;
         var pm = pmObj.AddComponent<PuzzleManager>();
-        pm.mode = config.puzzleType;
+        pm.mode = PuzzleManager.PuzzleMode.AllActive;
         pm.linkedDoor = exitDoor;
 
         int pieceCount = 3;
         var pieces = new PuzzleObject[pieceCount];
-        int[] sequence = new int[pieceCount];
+        var placed = new List<Vector2>();
 
         for (int i = 0; i < pieceCount; i++)
         {
-            float px = Random.Range(2f, w - 2f);
-            float py = Random.Range(2f, h - 2f);
+            Vector2 pos = FindCellCenterAwayFrom(2, w - 2, 2, h - 2, placed, 3f);
+            placed.Add(pos);
 
-            var leverObj = CreateSprite(
+            string colorId = ORB_COLOR_IDS[i];
+            Color tipColor = ORB_COLORS[i];
+
+            var obj = CreateSprite(
                 $"Lever_{i}",
-                new Vector2(px, py),
+                pos,
                 SpriteFactory.CreateLeverSprite(),
                 Color.white,
                 8
             );
-            leverObj.transform.localScale = Vector3.one * 0.7f;
-            leverObj.transform.parent = currentLevelRoot.transform;
-
-            var col = leverObj.AddComponent<BoxCollider2D>();
+            obj.transform.localScale = Vector3.one * 0.7f;
+            obj.transform.parent = currentLevelRoot.transform;
+            var col = obj.AddComponent<BoxCollider2D>();
             col.size = new Vector2(0.6f, 0.8f);
 
-            var puzzle = leverObj.AddComponent<PuzzleObject>();
-            puzzle.puzzleType = PuzzleObject.PuzzleType.Lever;
-            puzzle.sequenceIndex = i;
+            var puz = obj.AddComponent<PuzzleObject>();
+            puz.puzzleType = PuzzleObject.PuzzleType.Lever;
+            puz.sequenceIndex = i;
+            puz.requiredColorId = colorId;
+            puz.leverTipColor = tipColor;
 
-            pieces[i] = puzzle;
-            sequence[i] = i;
+            var tip = CreateSprite(
+                $"LeverTip_{i}",
+                pos + new Vector2(0, 0.5f),
+                SpriteFactory.CreateCircle(8),
+                tipColor,
+                9
+            );
+            tip.transform.localScale = Vector3.one * 0.3f;
+            tip.transform.parent = obj.transform;
+
+            pieces[i] = puz;
         }
-
-        for (int i = sequence.Length - 1; i > 0; i--)
-        {
-            int j = Random.Range(0, i + 1);
-            (sequence[i], sequence[j]) = (sequence[j], sequence[i]);
-        }
-
         pm.puzzlePieces = pieces;
-        pm.correctSequence = sequence;
-        pm.timeWindow = 8f - GameManager.Instance.currentLevel;
+
+        for (int i = 0; i < pieceCount; i++)
+        {
+            Vector2 pos = FindCellCenterAwayFrom(2, w - 2, 2, h - 2, placed, 3f);
+            placed.Add(pos);
+
+            var obj = CreateSprite(
+                $"Orb_{i}",
+                pos,
+                SpriteFactory.CreateCircle(12),
+                ORB_COLORS[i],
+                8
+            );
+            obj.transform.localScale = Vector3.one * 0.5f;
+            obj.transform.parent = currentLevelRoot.transform;
+            var col = obj.AddComponent<CircleCollider2D>();
+            col.radius = 0.4f;
+            var pickup = obj.AddComponent<PickupItem>();
+            pickup.itemType = PickupItem.ItemType.Orb;
+            pickup.orbColorId = ORB_COLOR_IDS[i];
+        }
     }
 
     void PlaceHiddenPassage(LevelConfig config, float w, float h, Color wallCol)
     {
-        float hx = Random.Range(w * 0.3f, w * 0.7f);
-        float hy = Random.Range(h * 0.3f, h * 0.7f);
-
-        var passageObj = CreateSprite(
-            "HiddenPassage",
-            new Vector2(hx, hy),
-            SpriteFactory.CreateRect(16, 16),
-            wallCol,
-            3
-        );
-        passageObj.transform.localScale = new Vector3(1.2f, 0.5f, 1);
-        passageObj.transform.parent = currentLevelRoot.transform;
-
-        var col = passageObj.AddComponent<BoxCollider2D>();
-        var passage = passageObj.AddComponent<HiddenPassage>();
-        passage.revealDistance = 1.5f;
+        Vector2 pos = FindCellCenter(w * 0.3f, w * 0.7f, h * 0.3f, h * 0.7f);
+        var obj = CreateSprite("HiddenPassage", pos, SpriteFactory.CreateRect(16, 16), wallCol, 3);
+        obj.transform.localScale = new Vector3(1.2f, 0.5f, 1);
+        obj.transform.parent = currentLevelRoot.transform;
+        obj.AddComponent<BoxCollider2D>();
+        obj.AddComponent<HiddenPassage>().revealDistance = 1.5f;
     }
 
     GameObject CreateSprite(string name, Vector2 pos, Sprite sprite, Color color, int sortOrder)
@@ -699,10 +1004,6 @@ public class LevelConfig
     public int enemyCount;
     public bool hasHiddenPassage;
     public bool hasPuzzle;
-    public bool hasSymbolDoor;
-    public int[] symbolSequence;
-    public PuzzleManager.PuzzleMode puzzleType;
-    public Color[] hintColors;
     public float enemySpeed;
     public float enemySightRange;
 }

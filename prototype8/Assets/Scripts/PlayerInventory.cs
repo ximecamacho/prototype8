@@ -5,10 +5,9 @@ using UnityEngine;
 public class PlayerInventory : MonoBehaviour
 {
     private HashSet<string> keys = new HashSet<string>();
-    private HashSet<string> notes = new HashSet<string>();
+    private Dictionary<string, int> orbs = new Dictionary<string, int>();
 
     public event Action<string> OnKeyCollected;
-    public event Action<string, string> OnNoteCollected;
 
     public bool HasKey(string keyId) => keys.Contains(keyId);
 
@@ -23,12 +22,36 @@ public class PlayerInventory : MonoBehaviour
         keys.Remove(keyId);
     }
 
-    public void AddNote(string noteId, string text)
+    public bool HasOrb(string colorId)
     {
-        if (!notes.Contains(noteId))
+        return orbs.ContainsKey(colorId) && orbs[colorId] > 0;
+    }
+
+    public void AddOrb(string colorId)
+    {
+        if (!orbs.ContainsKey(colorId))
+            orbs[colorId] = 0;
+        orbs[colorId]++;
+    }
+
+    public void UseOrb(string colorId)
+    {
+        if (orbs.ContainsKey(colorId) && orbs[colorId] > 0)
+            orbs[colorId]--;
+    }
+
+    public int OrbCount(string colorId)
+    {
+        return orbs.ContainsKey(colorId) ? orbs[colorId] : 0;
+    }
+
+    public int TotalOrbCount
+    {
+        get
         {
-            notes.Add(noteId);
-            OnNoteCollected?.Invoke(noteId, text);
+            int total = 0;
+            foreach (var kv in orbs) total += kv.Value;
+            return total;
         }
     }
 
@@ -37,6 +60,6 @@ public class PlayerInventory : MonoBehaviour
     public void Clear()
     {
         keys.Clear();
-        notes.Clear();
+        orbs.Clear();
     }
 }

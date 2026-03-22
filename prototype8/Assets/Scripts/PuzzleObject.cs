@@ -6,29 +6,25 @@ public class PuzzleObject : MonoBehaviour, IInteractable
     public enum PuzzleType
     {
         Lever,
-        PressurePlate,
-        SequenceButton,
-        Lantern,
     }
 
     [Header("Puzzle")]
     public PuzzleType puzzleType = PuzzleType.Lever;
-    public string puzzleGroupId = "puzzle_01";
     public int sequenceIndex = 0;
+
+    [Header("Color Requirement")]
+    public string requiredColorId = "";
+    public Color leverTipColor = Color.grey;
 
     [Header("State")]
     public bool isActivated = false;
 
     [Header("Linked")]
-    public Door linkedDoor;
     public PuzzleManager puzzleManager;
 
-    [Header("Visual")]
     private SpriteRenderer sr;
     private Color activeColor = new Color(0.3f, 0.9f, 0.3f);
     private Color inactiveColor = new Color(0.4f, 0.4f, 0.4f);
-
-    public event Action<PuzzleObject> OnActivated;
 
     void Start()
     {
@@ -38,32 +34,34 @@ public class PuzzleObject : MonoBehaviour, IInteractable
 
     public string GetPromptText() => "";
 
-    public bool CanInteract()
-    {
-        if (puzzleType == PuzzleType.PressurePlate)
-            return false;
-        if (puzzleType == PuzzleType.Lantern && isActivated)
-            return false;
-        return true;
-    }
+    public bool CanInteract() => true;
 
     public void Interact(PlayerController player)
     {
-        Activate();
-    }
-
-    public void Activate()
-    {
-        isActivated = !isActivated;
-
-        if (puzzleType == PuzzleType.Lantern)
+        if (isActivated)
         {
-            isActivated = true;
-            gameObject.tag = "Light";
+            Deactivate();
+            var inv = player.GetComponent<PlayerInventory>();
+            if (inv != null && !string.IsNullOrEmpty(requiredColorId))
+                inv.AddOrb(requiredColorId);
+            return;
         }
 
+        if (!string.IsNullOrEmpty(requiredColorId))
+        {
+            var inv = player.GetComponent<PlayerInventory>();
+            if (inv == null || !inv.HasOrb(requiredColorId))
+            {
+                var vf = VisualFeedback.Instance;
+                if (vf != null)
+                    vf.FlashScreen(new Color(1f, 0.15f, 0.15f), 0.2f);
+                return;
+            }
+            inv.UseOrb(requiredColorId);
+        }
+
+        isActivated = true;
         UpdateVisual();
-        OnActivated?.Invoke(this);
         puzzleManager?.OnPuzzlePieceActivated(this);
     }
 
@@ -78,21 +76,5 @@ public class PuzzleObject : MonoBehaviour, IInteractable
         if (sr == null)
             return;
         sr.color = isActivated ? activeColor : inactiveColor;
-
-        if (puzzleType == PuzzleType.Lantern && isActivated)
-            sr.color = new Color(1f, 0.9f, 0.5f);
-    }
-
-    void OnTriggerEnter2D(Collider2D other)
-    {
-        if (puzzleType == PuzzleType.PressurePlate && other.CompareTag("Player"))
-            if (!isActivated)
-                Activate();
-    }
-
-    void OnTriggerExit2D(Collider2D other)
-    {
-        if (puzzleType == PuzzleType.PressurePlate && other.CompareTag("Player"))
-            Deactivate();
     }
 }

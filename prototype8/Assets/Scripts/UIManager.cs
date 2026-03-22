@@ -1,6 +1,7 @@
 using System.Collections;
 using UnityEngine;
 using UnityEngine.UI;
+using Text = UnityEngine.UI.Text;
 
 public class UIManager : MonoBehaviour
 {
@@ -11,16 +12,15 @@ public class UIManager : MonoBehaviour
     private GameObject transfurPanel;
     private GameObject levelCompletePanel;
     private GameObject gameWonPanel;
-    private GameObject symbolPuzzlePanel;
 
-    private Image keyIcon;
     private Image interactIcon;
+    private Image bottomBar;
 
-    private Door currentSymbolDoor;
-    private int[] currentSymbolInput;
-    private int symbolInputIndex;
-    private Image[] symbolSlots;
-    private Image[] symbolChoices;
+    private Image keyIndicatorOuter;
+    private Image keyIndicatorInner;
+    private Image[] leverIndicatorOuter = new Image[3];
+    private Image[] leverIndicatorInner = new Image[3];
+    private Image safeZoneIndicator;
 
     private Canvas canvas;
 
@@ -81,7 +81,6 @@ public class UIManager : MonoBehaviour
         BuildTransfurScreen(canvasObj);
         BuildLevelComplete(canvasObj);
         BuildGameWon(canvasObj);
-        BuildSymbolPuzzle(canvasObj);
 
         HideAllPanels();
     }
@@ -89,15 +88,6 @@ public class UIManager : MonoBehaviour
     void BuildHUD(GameObject parent)
     {
         hudPanel = CreatePanel(parent, "HUD", Color.clear);
-
-        var keyObj = CreateUIRect(
-            hudPanel,
-            "KeyIcon",
-            new Vector2(0.03f, 0.03f),
-            new Vector2(0.08f, 0.08f),
-            new Color(1f, 0.85f, 0.2f, 0f)
-        );
-        keyIcon = keyObj.GetComponent<Image>();
 
         var interactObj = CreateUIRect(
             hudPanel,
@@ -107,6 +97,70 @@ public class UIManager : MonoBehaviour
             new Color(1f, 1f, 1f, 0f)
         );
         interactIcon = interactObj.GetComponent<Image>();
+
+        var barObj = CreateUIRect(
+            hudPanel,
+            "BottomBar",
+            new Vector2(0f, 0f),
+            new Vector2(1f, 0.07f),
+            new Color(0.05f, 0.05f, 0.08f, 0.7f)
+        );
+        bottomBar = barObj.GetComponent<Image>();
+
+        Color barBg = new Color(0.05f, 0.05f, 0.08f);
+
+        var kOuter = CreateUIRect(
+            barObj,
+            "KeyOuter",
+            new Vector2(0.02f, 0.1f),
+            new Vector2(0.06f, 0.9f),
+            new Color(1f, 0.85f, 0.2f, 0.8f)
+        );
+        keyIndicatorOuter = kOuter.GetComponent<Image>();
+        var kInner = CreateUIRect(
+            kOuter,
+            "KeyInner",
+            new Vector2(0.15f, 0.15f),
+            new Vector2(0.85f, 0.85f),
+            barBg
+        );
+        keyIndicatorInner = kInner.GetComponent<Image>();
+
+        Color[] leverColors =
+        {
+            new Color(0.0f, 0.9f, 0.9f, 0.8f),
+            new Color(0.9f, 0.0f, 0.9f, 0.8f),
+            new Color(1.0f, 0.9f, 0.2f, 0.8f),
+        };
+        for (int i = 0; i < 3; i++)
+        {
+            float lx = 0.10f + i * 0.045f;
+            var lOuter = CreateUIRect(
+                barObj,
+                $"LeverOuter{i}",
+                new Vector2(lx, 0.1f),
+                new Vector2(lx + 0.035f, 0.9f),
+                leverColors[i]
+            );
+            leverIndicatorOuter[i] = lOuter.GetComponent<Image>();
+            var lInner = CreateUIRect(
+                lOuter,
+                $"LeverInner{i}",
+                new Vector2(0.15f, 0.15f),
+                new Vector2(0.85f, 0.85f),
+                barBg
+            );
+            leverIndicatorInner[i] = lInner.GetComponent<Image>();
+        }
+
+        var safeObj = CreateUIRect(
+            barObj,
+            "SafeIndicator",
+            new Vector2(0.93f, 0.1f),
+            new Vector2(0.97f, 0.9f),
+            new Color(0.3f, 0.85f, 0.4f, 0f)
+        );
+        safeZoneIndicator = safeObj.GetComponent<Image>();
     }
 
     void BuildMainMenu(GameObject parent)
@@ -116,69 +170,119 @@ public class UIManager : MonoBehaviour
         CreateUIRect(
             mainMenuPanel,
             "MenuIcon",
-            new Vector2(0.35f, 0.45f),
-            new Vector2(0.65f, 0.75f),
+            new Vector2(0.35f, 0.50f),
+            new Vector2(0.65f, 0.78f),
             new Color(0.7f, 0.15f, 0.15f, 0.9f)
         );
 
         CreateUIRect(
             mainMenuPanel,
             "PlayTriangle",
-            new Vector2(0.44f, 0.25f),
-            new Vector2(0.56f, 0.38f),
+            new Vector2(0.44f, 0.35f),
+            new Vector2(0.56f, 0.45f),
             new Color(1f, 1f, 1f, 0.8f)
         );
+
+        var startLabel = CreateUIText(
+            mainMenuPanel,
+            "StartLabel",
+            new Vector2(0.30f, 0.27f),
+            new Vector2(0.70f, 0.34f),
+            "SPACE TO START",
+            11,
+            new Color(0.7f, 0.7f, 0.7f, 0.7f)
+        );
+        startLabel.alignment = TextAnchor.MiddleCenter;
 
         CreateUIRect(
             mainMenuPanel,
             "ArrowUp",
-            new Vector2(0.27f, 0.12f),
-            new Vector2(0.29f, 0.15f),
-            new Color(0.5f, 0.5f, 0.5f, 0.5f)
+            new Vector2(0.27f, 0.155f),
+            new Vector2(0.29f, 0.185f),
+            new Color(0.6f, 0.6f, 0.6f, 0.6f)
         );
         CreateUIRect(
             mainMenuPanel,
             "ArrowDown",
-            new Vector2(0.27f, 0.06f),
-            new Vector2(0.29f, 0.09f),
-            new Color(0.5f, 0.5f, 0.5f, 0.5f)
+            new Vector2(0.27f, 0.10f),
+            new Vector2(0.29f, 0.13f),
+            new Color(0.6f, 0.6f, 0.6f, 0.6f)
         );
         CreateUIRect(
             mainMenuPanel,
             "ArrowLeft",
-            new Vector2(0.24f, 0.09f),
-            new Vector2(0.26f, 0.12f),
-            new Color(0.5f, 0.5f, 0.5f, 0.5f)
+            new Vector2(0.245f, 0.125f),
+            new Vector2(0.265f, 0.155f),
+            new Color(0.6f, 0.6f, 0.6f, 0.6f)
         );
         CreateUIRect(
             mainMenuPanel,
             "ArrowRight",
-            new Vector2(0.30f, 0.09f),
-            new Vector2(0.32f, 0.12f),
-            new Color(0.5f, 0.5f, 0.5f, 0.5f)
+            new Vector2(0.295f, 0.125f),
+            new Vector2(0.315f, 0.155f),
+            new Color(0.6f, 0.6f, 0.6f, 0.6f)
         );
+        var moveLabel = CreateUIText(
+            mainMenuPanel,
+            "MoveLabel",
+            new Vector2(0.22f, 0.06f),
+            new Vector2(0.34f, 0.10f),
+            "MOVE",
+            9,
+            new Color(0.5f, 0.5f, 0.5f, 0.6f)
+        );
+        moveLabel.alignment = TextAnchor.MiddleCenter;
 
         CreateUIRect(
             mainMenuPanel,
-            "SpaceHint",
-            new Vector2(0.42f, 0.08f),
-            new Vector2(0.58f, 0.12f),
-            new Color(0.5f, 0.5f, 0.5f, 0.5f)
+            "SpaceKey",
+            new Vector2(0.55f, 0.12f),
+            new Vector2(0.75f, 0.155f),
+            new Color(0.6f, 0.6f, 0.6f, 0.6f)
         );
-
-        CreateUIRect(
+        var interactLabel = CreateUIText(
             mainMenuPanel,
-            "ShiftHint",
-            new Vector2(0.66f, 0.08f),
-            new Vector2(0.76f, 0.12f),
-            new Color(0.5f, 0.5f, 0.5f, 0.5f)
+            "InteractLabel",
+            new Vector2(0.52f, 0.06f),
+            new Vector2(0.78f, 0.10f),
+            "SPACE = INTERACT",
+            9,
+            new Color(0.5f, 0.5f, 0.5f, 0.6f)
         );
+        interactLabel.alignment = TextAnchor.MiddleCenter;
+    }
+
+    Text CreateUIText(
+        GameObject parent,
+        string name,
+        Vector2 anchorMin,
+        Vector2 anchorMax,
+        string content,
+        int fontSize,
+        Color color
+    )
+    {
+        var obj = new GameObject(name);
+        obj.transform.SetParent(parent.transform, false);
+        var rect = obj.AddComponent<RectTransform>();
+        rect.anchorMin = anchorMin;
+        rect.anchorMax = anchorMax;
+        rect.offsetMin = Vector2.zero;
+        rect.offsetMax = Vector2.zero;
+        var text = obj.AddComponent<Text>();
+        text.text = content;
+        text.font = Font.CreateDynamicFontFromOSFont("Arial", fontSize);
+        text.fontSize = fontSize;
+        text.color = color;
+        text.alignment = TextAnchor.MiddleLeft;
+        text.horizontalOverflow = HorizontalWrapMode.Overflow;
+        text.raycastTarget = false;
+        return text;
     }
 
     void BuildTransfurScreen(GameObject parent)
     {
         transfurPanel = CreatePanel(parent, "Transfur", new Color(0.12f, 0.02f, 0.15f, 0f));
-
         CreateUIRect(
             transfurPanel,
             "DeathIcon",
@@ -186,7 +290,6 @@ public class UIManager : MonoBehaviour
             new Vector2(0.7f, 0.75f),
             new Color(0.5f, 0.1f, 0.6f, 0.9f)
         );
-
         CreateUIRect(
             transfurPanel,
             "RetryIcon",
@@ -203,7 +306,6 @@ public class UIManager : MonoBehaviour
             "LevelComplete",
             new Color(0.02f, 0.08f, 0.02f, 0.9f)
         );
-
         CreateUIRect(
             levelCompletePanel,
             "CheckIcon",
@@ -211,7 +313,6 @@ public class UIManager : MonoBehaviour
             new Vector2(0.65f, 0.7f),
             new Color(0.2f, 0.85f, 0.3f, 0.9f)
         );
-
         for (int i = 0; i < 5; i++)
         {
             float x = 0.35f + i * 0.07f;
@@ -223,7 +324,6 @@ public class UIManager : MonoBehaviour
                 new Color(0.5f, 0.5f, 0.5f, 0.5f)
             );
         }
-
         CreateUIRect(
             levelCompletePanel,
             "ContinueArrow",
@@ -236,7 +336,6 @@ public class UIManager : MonoBehaviour
     void BuildGameWon(GameObject parent)
     {
         gameWonPanel = CreatePanel(parent, "GameWon", new Color(0.02f, 0.02f, 0.05f, 0.95f));
-
         CreateUIRect(
             gameWonPanel,
             "WonIcon",
@@ -244,7 +343,6 @@ public class UIManager : MonoBehaviour
             new Vector2(0.7f, 0.75f),
             new Color(1f, 0.85f, 0.3f, 0.9f)
         );
-
         CreateUIRect(
             gameWonPanel,
             "WonRetry",
@@ -252,43 +350,6 @@ public class UIManager : MonoBehaviour
             new Vector2(0.56f, 0.22f),
             new Color(1f, 1f, 1f, 0.7f)
         );
-    }
-
-    void BuildSymbolPuzzle(GameObject parent)
-    {
-        symbolPuzzlePanel = CreatePanel(
-            parent,
-            "SymbolPuzzle",
-            new Color(0.05f, 0.05f, 0.1f, 0.92f)
-        );
-
-        symbolSlots = new Image[4];
-        for (int i = 0; i < 4; i++)
-        {
-            float x = 0.3f + i * 0.1f;
-            var slot = CreateUIRect(
-                symbolPuzzlePanel,
-                $"Slot{i}",
-                new Vector2(x, 0.65f),
-                new Vector2(x + 0.08f, 0.75f),
-                new Color(0.2f, 0.2f, 0.3f, 0.8f)
-            );
-            symbolSlots[i] = slot.GetComponent<Image>();
-        }
-
-        symbolChoices = new Image[6];
-        for (int i = 0; i < 6; i++)
-        {
-            float x = 0.15f + i * 0.12f;
-            var choice = CreateUIRect(
-                symbolPuzzlePanel,
-                $"Choice{i}",
-                new Vector2(x, 0.35f),
-                new Vector2(x + 0.09f, 0.5f),
-                new Color(0.6f, 0.6f, 0.7f, 0.8f)
-            );
-            symbolChoices[i] = choice.GetComponent<Image>();
-        }
     }
 
     GameObject CreatePanel(GameObject parent, string name, Color bgColor)
@@ -333,7 +394,6 @@ public class UIManager : MonoBehaviour
         transfurPanel?.SetActive(false);
         levelCompletePanel?.SetActive(false);
         gameWonPanel?.SetActive(false);
-        symbolPuzzlePanel?.SetActive(false);
     }
 
     public void ShowMainMenu()
@@ -347,6 +407,22 @@ public class UIManager : MonoBehaviour
         HideAllPanels();
         hudPanel.SetActive(true);
         UpdateLevelDots(level);
+        UpdateHUDVisibility(level);
+    }
+
+    void UpdateHUDVisibility(int level)
+    {
+        bool hasKey = level < 2;
+        bool hasPuzzle = level >= 2;
+
+        if (keyIndicatorOuter != null)
+            keyIndicatorOuter.gameObject.SetActive(hasKey);
+
+        for (int i = 0; i < 3; i++)
+        {
+            if (leverIndicatorOuter[i] != null)
+                leverIndicatorOuter[i].gameObject.SetActive(hasPuzzle);
+        }
     }
 
     void ShowTransfurScreen()
@@ -386,52 +462,9 @@ public class UIManager : MonoBehaviour
         }
     }
 
-    public void ShowHintIllumination(Color glowColor, Sprite icon)
+    public void ShowLockedMessage(string message)
     {
-        VisualFeedback.Instance?.FlashScreen(glowColor, 0.3f);
-        if (GameManager.Instance != null)
-            GameManager.Instance.PauseForHint();
-        StartCoroutine(AutoResumeHint(1.5f));
-    }
-
-    IEnumerator AutoResumeHint(float delay)
-    {
-        float elapsed = 0;
-        while (elapsed < delay)
-        {
-            elapsed += Time.unscaledDeltaTime;
-            if (Input.GetKeyDown(KeyCode.Space) || Input.GetKeyDown(KeyCode.E))
-                break;
-            yield return null;
-        }
-        if (GameManager.Instance != null)
-            GameManager.Instance.ResumeFromHint();
-    }
-
-    public void ShowSymbolPuzzle(Door door)
-    {
-        currentSymbolDoor = door;
-        currentSymbolInput = new int[4];
-        symbolInputIndex = 0;
-        symbolPuzzlePanel.SetActive(true);
-        GameManager.Instance.isPaused = true;
-
-        for (int i = 0; i < symbolSlots.Length; i++)
-            symbolSlots[i].color = new Color(0.2f, 0.2f, 0.3f, 0.8f);
-
-        var player = FindFirstObjectByType<PlayerController>();
-        if (player != null)
-            player.SetCanMove(false);
-    }
-
-    void HideSymbolPuzzle()
-    {
-        symbolPuzzlePanel.SetActive(false);
-        currentSymbolDoor = null;
-        GameManager.Instance.isPaused = false;
-        var player = FindFirstObjectByType<PlayerController>();
-        if (player != null)
-            player.SetCanMove(true);
+        VisualFeedback.Instance?.FlashScreen(new Color(1f, 0.15f, 0.15f), 0.2f);
     }
 
     public void UpdateInteractPrompt(bool show)
@@ -441,16 +474,6 @@ public class UIManager : MonoBehaviour
         Color c = interactIcon.color;
         c.a = Mathf.Lerp(c.a, show ? 0.7f : 0f, Time.deltaTime * 8f);
         interactIcon.color = c;
-    }
-
-    public void UpdateKeyIndicator(bool hasKey)
-    {
-        if (keyIcon != null)
-        {
-            Color c = keyIcon.color;
-            c.a = hasKey ? 0.9f : 0f;
-            keyIcon.color = c;
-        }
     }
 
     void Update()
@@ -463,7 +486,6 @@ public class UIManager : MonoBehaviour
                 float pulse = Mathf.Sin(Time.time * 2f) * 0.15f + 0.7f;
                 play.color = new Color(1f, 1f, 1f, pulse);
             }
-
             if (Input.GetKeyDown(KeyCode.Space) || Input.GetKeyDown(KeyCode.Return))
                 GameManager.Instance.StartGame();
         }
@@ -490,41 +512,54 @@ public class UIManager : MonoBehaviour
                 ShowMainMenu();
         }
 
-        if (symbolPuzzlePanel != null && symbolPuzzlePanel.activeSelf)
+        if (hudPanel != null && hudPanel.activeSelf)
+            UpdateHUDIndicators();
+    }
+
+    void UpdateHUDIndicators()
+    {
+        var player = FindFirstObjectByType<PlayerController>();
+        if (player == null)
+            return;
+        var inv = player.GetComponent<PlayerInventory>();
+        if (inv == null)
+            return;
+
+        if (
+            keyIndicatorInner != null
+            && keyIndicatorOuter != null
+            && keyIndicatorOuter.gameObject.activeSelf
+        )
         {
-            for (int i = 0; i < 6; i++)
-            {
-                if (Input.GetKeyDown(KeyCode.Alpha1 + i) || Input.GetKeyDown(KeyCode.Keypad1 + i))
-                {
-                    if (symbolInputIndex < 4)
-                    {
-                        currentSymbolInput[symbolInputIndex] = i;
-                        if (symbolSlots[symbolInputIndex] != null)
-                            symbolSlots[symbolInputIndex].color = new Color(0.6f, 0.8f, 1f, 0.9f);
-                        symbolInputIndex++;
-
-                        if (symbolInputIndex >= 4)
-                        {
-                            currentSymbolDoor?.TrySymbolSequence(currentSymbolInput);
-                            HideSymbolPuzzle();
-                        }
-                    }
-                }
-            }
-
-            if (Input.GetKeyDown(KeyCode.Escape) || Input.GetKeyDown(KeyCode.Backspace))
-                HideSymbolPuzzle();
+            bool hasKey = inv.KeyCount > 0;
+            keyIndicatorInner.gameObject.SetActive(!hasKey);
         }
 
-        if (hudPanel != null && hudPanel.activeSelf)
+        var pm = FindFirstObjectByType<PuzzleManager>();
+        for (int i = 0; i < 3; i++)
         {
-            var player = FindFirstObjectByType<PlayerController>();
-            if (player != null)
-            {
-                var inv = player.GetComponent<PlayerInventory>();
-                if (inv != null)
-                    UpdateKeyIndicator(inv.KeyCount > 0);
-            }
+            if (leverIndicatorInner[i] == null || leverIndicatorOuter[i] == null)
+                continue;
+            if (!leverIndicatorOuter[i].gameObject.activeSelf)
+                continue;
+
+            bool active = false;
+            if (pm != null && pm.puzzlePieces != null && i < pm.puzzlePieces.Length)
+                active = pm.puzzlePieces[i].isActivated;
+
+            leverIndicatorInner[i].gameObject.SetActive(!active);
+        }
+
+        if (safeZoneIndicator != null)
+        {
+            float r = LevelGenerator.safeZoneRadius;
+            Vector2 pp = player.transform.position;
+            bool inSafe =
+                Vector2.Distance(pp, LevelGenerator.entrancePos) < r
+                || Vector2.Distance(pp, LevelGenerator.exitPos) < r;
+            Color sc = safeZoneIndicator.color;
+            sc.a = Mathf.Lerp(sc.a, inSafe ? 0.9f : 0f, Time.deltaTime * 6f);
+            safeZoneIndicator.color = sc;
         }
     }
 

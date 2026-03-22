@@ -27,14 +27,14 @@ public class VisualFeedback : MonoBehaviour
         canvas.renderMode = RenderMode.ScreenSpaceOverlay;
         canvas.sortingOrder = 200;
         var img = obj.AddComponent<UnityEngine.UI.Image>();
-        img.color = new Color(color.r, color.g, color.b, 0.4f);
+        img.color = new Color(color.r, color.g, color.b, 0.15f);
         img.raycastTarget = false;
 
         float elapsed = 0;
         while (elapsed < duration)
         {
             elapsed += Time.unscaledDeltaTime;
-            float a = Mathf.Lerp(0.4f, 0f, elapsed / duration);
+            float a = Mathf.Lerp(0.15f, 0f, elapsed / duration);
             img.color = new Color(color.r, color.g, color.b, a);
             yield return null;
         }

@@ -5,18 +5,12 @@ public class PlayerController : MonoBehaviour
 {
     [Header("Movement")]
     public float moveSpeed = 6f;
-    public float sprintSpeed = 9f;
 
     [Header("Interaction")]
     public float interactRange = 1.2f;
 
-    public float sprintStamina = 100f;
-    public float maxStamina = 100f;
-    public bool isHoldingBreath = false;
-
     private Rigidbody2D rb;
     private Vector2 moveInput;
-    private bool isSprinting;
     private bool canMove = true;
     private IInteractable nearestInteractable;
     private SpriteRenderer sr;
@@ -26,7 +20,6 @@ public class PlayerController : MonoBehaviour
     public event Action<IInteractable> OnNearInteractable;
 
     public bool IsMoving => moveInput.magnitude > 0.1f;
-    public bool IsSprinting => isSprinting && IsMoving;
 
     void Start()
     {
@@ -54,9 +47,7 @@ public class PlayerController : MonoBehaviour
         if (sr != null)
             sr.flipX = facingDir == 1;
 
-        isSprinting = Input.GetKey(KeyCode.LeftShift) && IsMoving;
-
-        if (Input.GetKeyDown(KeyCode.E) || Input.GetKeyDown(KeyCode.Space))
+        if (Input.GetKeyDown(KeyCode.Space))
             TryInteract();
 
         CheckNearbyInteractables();
@@ -66,8 +57,7 @@ public class PlayerController : MonoBehaviour
     {
         if (!canMove)
             return;
-        float speed = isSprinting ? sprintSpeed : moveSpeed;
-        rb.linearVelocity = moveInput * speed;
+        rb.linearVelocity = moveInput * moveSpeed;
     }
 
     void CheckNearbyInteractables()

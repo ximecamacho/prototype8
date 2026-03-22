@@ -5,19 +5,17 @@ public class PickupItem : MonoBehaviour, IInteractable
     public enum ItemType
     {
         Key,
-        Hint,
+        Orb,
     }
 
     [Header("Item")]
     public ItemType itemType = ItemType.Key;
-    public string itemId = "key_01";
 
     [Header("Key")]
     public string keyId = "key_01";
 
-    [Header("Hint")]
-    public Color hintGlowColor = Color.cyan;
-    public Sprite hintSprite;
+    [Header("Orb")]
+    public string orbColorId = "cyan";
 
     private SpriteRenderer sr;
     private bool collected = false;
@@ -68,11 +66,13 @@ public class PickupItem : MonoBehaviour, IInteractable
                 }
                 break;
 
-            case ItemType.Hint:
-                inv?.AddNote(itemId, "");
-                UIManager.Instance?.ShowHintIllumination(hintGlowColor, hintSprite);
+            case ItemType.Orb:
+                inv?.AddOrb(orbColorId);
                 if (vf != null)
-                    vf.SpawnParticles(pos, hintGlowColor, 3);
+                {
+                    vf.FlashScreen(sr != null ? sr.color : Color.white, 0.15f);
+                    vf.SpawnParticles(pos, sr != null ? sr.color : Color.white, 4);
+                }
                 break;
         }
 

@@ -17,17 +17,10 @@ public class NoteInteractionBridge : MonoBehaviour
         if (inv == null)
             return;
 
-        inv.OnNoteCollected -= OnHintCollected;
-        inv.OnNoteCollected += OnHintCollected;
         inv.OnKeyCollected -= OnKeyCollected;
         inv.OnKeyCollected += OnKeyCollected;
 
         CancelInvoke(nameof(TrySubscribe));
-    }
-
-    void OnHintCollected(string id, string text)
-    {
-        // Visual flash feedback handled by PickupItem -> UIManager.ShowHintIllumination
     }
 
     void OnKeyCollected(string keyId)

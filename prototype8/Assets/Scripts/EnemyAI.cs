@@ -1,3 +1,4 @@
+using System.Collections.Generic;
 using UnityEngine;
 
 public class EnemyAI : MonoBehaviour
@@ -5,66 +6,61 @@ public class EnemyAI : MonoBehaviour
     public enum EnemyState
     {
         Patrol,
-        Alert,
         Chase,
         Return,
     }
 
-    [Header("Identity")]
-    public string enemyName = "Cursed Crew";
-    public EnemyType enemyType = EnemyType.Wanderer;
-
     [Header("Detection")]
     public float sightRange = 5f;
     public float hearingRange = 2.5f;
-    public float chaseRange = 8f;
     public LayerMask obstacleLayer;
 
     [Header("Movement")]
     public float patrolSpeed = 1.8f;
     public float chaseSpeed = 3.8f;
+    public float maxChaseDistance = 8f;
 
     [Header("Patrol")]
     public Vector2[] patrolPoints;
-    public bool randomizePatrol = true;
-    public float waitTimeAtPoint = 1.5f;
+    public float waitTimeAtPoint = 0.8f;
 
-    [Header("State")]
     public EnemyState currentState = EnemyState.Patrol;
 
     private Transform player;
     private Rigidbody2D rb;
     private SpriteRenderer sr;
-    private int currentPatrolIndex;
-    private float waitTimer;
-    private Vector2 lastKnownPlayerPos;
-    private float lostPlayerTimer;
-    private float alertDuration = 3f;
-    private Vector2 startPosition;
-    private float speedModifier = 1f;
-
     private SpriteRenderer alertIndicator;
+    private int patrolIndex;
+    private float waitTimer;
+    private Vector2 startPosition;
+    private float stuckTimer;
+    private Vector2 lastPos;
+
+    private List<Vector2> currentPath;
+    private int pathIndex;
+    private float pathRecalcTimer;
+    private const float PATH_RECALC_INTERVAL = 0.3f;
 
     void Start()
     {
         rb = GetComponent<Rigidbody2D>();
         sr = GetComponent<SpriteRenderer>();
         startPosition = transform.position;
+        lastPos = startPosition;
 
         var playerObj = GameObject.FindGameObjectWithTag("Player");
         if (playerObj != null)
             player = playerObj.transform;
 
-        if (randomizePatrol && patrolPoints != null && patrolPoints.Length > 1)
-            currentPatrolIndex =
-                Mathf.Abs(GameManager.Instance.runSeed + GetInstanceID()) % patrolPoints.Length;
+        if (patrolPoints != null && patrolPoints.Length > 0)
+            patrolIndex = Random.Range(0, patrolPoints.Length);
 
-        var indicatorObj = new GameObject("AlertIndicator");
-        indicatorObj.transform.SetParent(transform);
-        indicatorObj.transform.localPosition = new Vector3(0, 0.8f, 0);
-        alertIndicator = indicatorObj.AddComponent<SpriteRenderer>();
+        var ind = new GameObject("AlertIndicator");
+        ind.transform.SetParent(transform);
+        ind.transform.localPosition = new Vector3(0, 0.8f, 0);
+        alertIndicator = ind.AddComponent<SpriteRenderer>();
         alertIndicator.sprite = CreateDiamondSprite();
-        alertIndicator.color = new Color(1f, 0.3f, 0.3f, 0);
+        alertIndicator.color = new Color(1f, 0.3f, 0.3f, 0f);
         alertIndicator.sortingOrder = 15;
     }
 
@@ -77,235 +73,277 @@ public class EnemyAI : MonoBehaviour
             || GameManager.Instance.isPaused
         )
         {
-            if (rb != null && GameManager.Instance != null && GameManager.Instance.isPaused)
+            if (rb != null)
                 rb.linearVelocity = Vector2.zero;
             return;
         }
 
-        UpdateSpeedModifier();
+        if (rb.linearVelocity.magnitude > 0.1f)
+        {
+            if (Vector2.Distance(transform.position, lastPos) < 0.15f)
+                stuckTimer += Time.deltaTime;
+            else
+                stuckTimer = 0f;
+            lastPos = transform.position;
+
+            if (stuckTimer > 1.5f)
+            {
+                stuckTimer = 0f;
+                currentState = EnemyState.Return;
+                currentPath = null;
+            }
+        }
 
         switch (currentState)
         {
             case EnemyState.Patrol:
-                Patrol();
-                CheckForPlayer();
-                break;
-            case EnemyState.Alert:
-                AlertBehavior();
-                CheckForPlayer();
+                DoPatrol();
+                TryDetectPlayer();
                 break;
             case EnemyState.Chase:
-                ChasePlayer();
+                DoChase();
                 break;
             case EnemyState.Return:
-                ReturnToPatrol();
+                DoReturn();
                 break;
         }
 
-        float targetAlpha =
-            currentState == EnemyState.Chase ? 1f : (currentState == EnemyState.Alert ? 0.6f : 0f);
         if (alertIndicator != null)
         {
-            Color c = alertIndicator.color;
-            c.a = Mathf.Lerp(c.a, targetAlpha, Time.deltaTime * 5f);
+            var c = alertIndicator.color;
+            c.a = currentState == EnemyState.Chase ? 1f : 0f;
             alertIndicator.color = c;
         }
 
-        if (rb.linearVelocity.x > 0.1f && sr != null)
-            sr.flipX = false;
-        else if (rb.linearVelocity.x < -0.1f && sr != null)
-            sr.flipX = true;
-    }
-
-    void UpdateSpeedModifier()
-    {
-        speedModifier = 1f;
-        var hits = Physics2D.OverlapCircleAll(transform.position, 3f);
-        foreach (var col in hits)
+        if (sr != null)
         {
-            if (col.CompareTag("Light"))
-            {
-                speedModifier = 0.5f;
-                break;
-            }
+            if (rb.linearVelocity.x > 0.1f)
+                sr.flipX = false;
+            else if (rb.linearVelocity.x < -0.1f)
+                sr.flipX = true;
         }
     }
 
-    void Patrol()
+    void DoPatrol()
     {
         if (patrolPoints == null || patrolPoints.Length == 0)
         {
-            if (waitTimer > 0)
-            {
-                waitTimer -= Time.deltaTime;
-                rb.linearVelocity = Vector2.zero;
-                return;
-            }
-            Vector2 randomDir = Random.insideUnitCircle.normalized;
-            MoveTowards((Vector2)transform.position + randomDir * 3f, patrolSpeed);
-            if (Random.value < 0.01f)
-                waitTimer = waitTimeAtPoint;
+            rb.linearVelocity = Vector2.zero;
             return;
         }
 
-        Vector2 target = patrolPoints[currentPatrolIndex];
+        Vector2 target = patrolPoints[patrolIndex];
         float dist = Vector2.Distance(transform.position, target);
 
-        if (dist < 0.3f)
+        if (dist < 0.4f)
         {
             rb.linearVelocity = Vector2.zero;
             waitTimer -= Time.deltaTime;
-            if (waitTimer <= 0)
+            if (waitTimer <= 0f)
             {
-                currentPatrolIndex = randomizePatrol
-                    ? Random.Range(0, patrolPoints.Length)
-                    : (currentPatrolIndex + 1) % patrolPoints.Length;
-                waitTimer = waitTimeAtPoint + Random.Range(-0.5f, 0.5f);
+                patrolIndex = (patrolIndex + 1) % patrolPoints.Length;
+                waitTimer = waitTimeAtPoint;
             }
         }
         else
         {
-            MoveTowards(target, patrolSpeed);
+            MoveToward(target, patrolSpeed);
         }
     }
 
-    void CheckForPlayer()
+    void TryDetectPlayer()
     {
         if (player == null)
             return;
-        float distToPlayer = Vector2.Distance(transform.position, player.position);
+
+        float r = LevelGenerator.safeZoneRadius;
+        Vector2 pp = player.position;
+        if (
+            Vector2.Distance(pp, LevelGenerator.entrancePos) < r
+            || Vector2.Distance(pp, LevelGenerator.exitPos) < r
+        )
+            return;
+
+        float dist = Vector2.Distance(transform.position, player.position);
 
         var pc = player.GetComponent<PlayerController>();
-        float detectionMod = (pc != null && pc.isHoldingBreath) ? 0.3f : 1f;
-
-        if (distToPlayer < hearingRange * detectionMod && pc != null && pc.IsMoving)
+        if (dist < hearingRange && pc != null && pc.IsMoving)
         {
-            float hearChance = pc.IsSprinting ? 1f : 0.5f;
-            if (Random.value < hearChance)
-            {
-                lastKnownPlayerPos = player.position;
-                currentState = EnemyState.Chase;
-                return;
-            }
+            currentState = EnemyState.Chase;
+            currentPath = null;
+            pathRecalcTimer = 0f;
+            return;
         }
 
-        if (distToPlayer < sightRange * detectionMod)
+        if (dist < sightRange)
         {
-            Vector2 dir = ((Vector2)player.position - (Vector2)transform.position).normalized;
-            var hit = Physics2D.Raycast(transform.position, dir, distToPlayer, obstacleLayer);
-            if (hit.collider == null)
-            {
-                lastKnownPlayerPos = player.position;
-                currentState = EnemyState.Chase;
-            }
+            currentState = EnemyState.Chase;
+            currentPath = null;
+            pathRecalcTimer = 0f;
         }
     }
 
-    void AlertBehavior()
+    void DoChase()
     {
-        rb.linearVelocity = Vector2.zero;
-        lostPlayerTimer -= Time.deltaTime;
-        if (lostPlayerTimer <= 0)
+        if (player == null)
+        {
             currentState = EnemyState.Return;
-    }
-
-    void ChasePlayer()
-    {
-        if (player == null)
+            currentPath = null;
             return;
-        float distToPlayer = Vector2.Distance(transform.position, player.position);
+        }
 
-        var pc = player.GetComponent<PlayerController>();
-        float detectionMod = (pc != null && pc.isHoldingBreath) ? 0.3f : 1f;
-
-        Vector2 dir = ((Vector2)player.position - (Vector2)transform.position).normalized;
-        var hit = Physics2D.Raycast(transform.position, dir, distToPlayer, obstacleLayer);
-        bool canSee = hit.collider == null && distToPlayer < chaseRange * detectionMod;
-
-        if (canSee)
+        float r = LevelGenerator.safeZoneRadius;
+        Vector2 pp = player.position;
+        if (
+            Vector2.Distance(pp, LevelGenerator.entrancePos) < r
+            || Vector2.Distance(pp, LevelGenerator.exitPos) < r
+        )
         {
-            lastKnownPlayerPos = player.position;
-            MoveTowards(player.position, chaseSpeed);
+            currentState = EnemyState.Return;
+            currentPath = null;
+            return;
+        }
 
-            if (distToPlayer < 0.6f)
-                CatchPlayer();
+        if (Vector2.Distance(transform.position, startPosition) > maxChaseDistance)
+        {
+            currentState = EnemyState.Return;
+            currentPath = null;
+            return;
+        }
+
+        float dist = Vector2.Distance(transform.position, player.position);
+
+        if (dist > sightRange * 1.5f)
+        {
+            currentState = EnemyState.Return;
+            currentPath = null;
+            return;
+        }
+
+        pathRecalcTimer -= Time.deltaTime;
+        if (pathRecalcTimer <= 0f || currentPath == null)
+        {
+            pathRecalcTimer = PATH_RECALC_INTERVAL;
+            var lg = LevelGenerator.Instance;
+            if (lg != null)
+            {
+                currentPath = lg.FindPath(transform.position, player.position, maxChaseDistance);
+                pathIndex = 1;
+            }
+        }
+
+        if (currentPath != null && pathIndex < currentPath.Count)
+        {
+            Vector2 waypoint = currentPath[pathIndex];
+            float wpDist = Vector2.Distance(transform.position, waypoint);
+
+            if (wpDist < 0.3f)
+            {
+                pathIndex++;
+                if (pathIndex >= currentPath.Count)
+                {
+                    pathRecalcTimer = 0f;
+                }
+            }
+            else
+            {
+                MoveToward(waypoint, chaseSpeed);
+            }
         }
         else
         {
-            MoveTowards(lastKnownPlayerPos, chaseSpeed * 0.8f);
-            if (Vector2.Distance(transform.position, lastKnownPlayerPos) < 0.5f)
-            {
-                currentState = EnemyState.Alert;
-                lostPlayerTimer = alertDuration;
-            }
+            MoveToward(player.position, chaseSpeed);
+        }
+
+        if (dist < 0.6f)
+        {
+            var pc = player.GetComponent<PlayerController>();
+            if (pc != null)
+                pc.OnCaught(this);
         }
     }
 
-    void ReturnToPatrol()
+    void DoReturn()
     {
-        Vector2 returnTarget =
-            (patrolPoints != null && patrolPoints.Length > 0)
-                ? patrolPoints[currentPatrolIndex]
-                : startPosition;
-        MoveTowards(returnTarget, patrolSpeed);
-
-        if (Vector2.Distance(transform.position, returnTarget) < 0.5f)
+        float dist = Vector2.Distance(transform.position, startPosition);
+        if (dist < 0.5f)
         {
             currentState = EnemyState.Patrol;
             waitTimer = waitTimeAtPoint;
+            rb.linearVelocity = Vector2.zero;
+            currentPath = null;
         }
-        CheckForPlayer();
+        else
+        {
+            pathRecalcTimer -= Time.deltaTime;
+            if (pathRecalcTimer <= 0f || currentPath == null)
+            {
+                pathRecalcTimer = PATH_RECALC_INTERVAL * 2f;
+                var lg = LevelGenerator.Instance;
+                if (lg != null)
+                {
+                    currentPath = lg.FindPath(
+                        transform.position,
+                        startPosition,
+                        maxChaseDistance * 2f
+                    );
+                    pathIndex = 1;
+                }
+            }
+
+            if (currentPath != null && pathIndex < currentPath.Count)
+            {
+                Vector2 waypoint = currentPath[pathIndex];
+                if (Vector2.Distance(transform.position, waypoint) < 0.3f)
+                    pathIndex++;
+
+                if (pathIndex < currentPath.Count)
+                    MoveToward(currentPath[pathIndex], patrolSpeed * 0.8f);
+                else
+                    MoveToward(startPosition, patrolSpeed * 0.8f);
+            }
+            else
+            {
+                MoveToward(startPosition, patrolSpeed * 0.8f);
+            }
+        }
+
+        TryDetectPlayer();
     }
 
-    void MoveTowards(Vector2 target, float speed)
+    void MoveToward(Vector2 target, float speed)
     {
         Vector2 dir = (target - (Vector2)transform.position).normalized;
-        rb.linearVelocity = dir * speed * speedModifier;
-    }
-
-    void CatchPlayer()
-    {
-        var pc = player.GetComponent<PlayerController>();
-        if (pc != null)
-            pc.OnCaught(this);
+        rb.linearVelocity = dir * speed;
     }
 
     Sprite CreateDiamondSprite()
     {
         var tex = new Texture2D(8, 8);
         tex.filterMode = FilterMode.Point;
-        Color clear = Color.clear;
-        Color white = Color.white;
         for (int x = 0; x < 8; x++)
         for (int y = 0; y < 8; y++)
-            tex.SetPixel(x, y, clear);
-        tex.SetPixel(3, 0, white);
-        tex.SetPixel(4, 0, white);
-        tex.SetPixel(2, 1, white);
-        tex.SetPixel(3, 1, white);
-        tex.SetPixel(4, 1, white);
-        tex.SetPixel(5, 1, white);
-        tex.SetPixel(1, 2, white);
-        tex.SetPixel(2, 2, white);
-        tex.SetPixel(3, 2, white);
-        tex.SetPixel(4, 2, white);
-        tex.SetPixel(5, 2, white);
-        tex.SetPixel(6, 2, white);
-        tex.SetPixel(2, 3, white);
-        tex.SetPixel(3, 3, white);
-        tex.SetPixel(4, 3, white);
-        tex.SetPixel(5, 3, white);
-        tex.SetPixel(3, 4, white);
-        tex.SetPixel(4, 4, white);
+            tex.SetPixel(x, y, Color.clear);
+        Color w = Color.white;
+        tex.SetPixel(3, 0, w);
+        tex.SetPixel(4, 0, w);
+        tex.SetPixel(2, 1, w);
+        tex.SetPixel(3, 1, w);
+        tex.SetPixel(4, 1, w);
+        tex.SetPixel(5, 1, w);
+        tex.SetPixel(1, 2, w);
+        tex.SetPixel(2, 2, w);
+        tex.SetPixel(3, 2, w);
+        tex.SetPixel(4, 2, w);
+        tex.SetPixel(5, 2, w);
+        tex.SetPixel(6, 2, w);
+        tex.SetPixel(2, 3, w);
+        tex.SetPixel(3, 3, w);
+        tex.SetPixel(4, 3, w);
+        tex.SetPixel(5, 3, w);
+        tex.SetPixel(3, 4, w);
+        tex.SetPixel(4, 4, w);
         tex.Apply();
         return Sprite.Create(tex, new Rect(0, 0, 8, 8), new Vector2(0.5f, 0.5f), 8);
     }
-}
-
-public enum EnemyType
-{
-    Wanderer,
-    Patroller,
-    Stalker,
-    Guardian,
 }

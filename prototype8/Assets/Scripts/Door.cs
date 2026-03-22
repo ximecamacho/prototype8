@@ -5,15 +5,13 @@ public class Door : MonoBehaviour, IInteractable
     public enum DoorType
     {
         Key,
-        Symbol,
-        Hidden,
         Puzzle,
+        Hidden,
     }
 
     [Header("Door Settings")]
     public DoorType doorType = DoorType.Key;
     public string requiredKeyId = "";
-    public int[] requiredSymbolSequence;
     public bool isLocked = true;
     public bool isExitDoor = false;
 
@@ -40,13 +38,10 @@ public class Door : MonoBehaviour, IInteractable
         }
 
         if (isHidden)
-        {
             hiddenColor = sr.color;
-        }
         else
-        {
             sr.color = isLocked ? lockedColor : unlockedColor;
-        }
+
         sr.sortingOrder = 5;
     }
 
@@ -116,32 +111,16 @@ public class Door : MonoBehaviour, IInteractable
                     Unlock();
                     Open(player);
                 }
-                break;
-
-            case DoorType.Symbol:
-                UIManager.Instance?.ShowSymbolPuzzle(this);
+                else
+                {
+                    VisualFeedback.Instance?.FlashScreen(new Color(1f, 0.15f, 0.15f), 0.2f);
+                }
                 break;
 
             case DoorType.Puzzle:
+                VisualFeedback.Instance?.FlashScreen(new Color(1f, 0.15f, 0.15f), 0.2f);
                 break;
         }
-    }
-
-    public void TrySymbolSequence(int[] sequence)
-    {
-        if (requiredSymbolSequence == null)
-            return;
-        if (sequence.Length != requiredSymbolSequence.Length)
-            return;
-
-        for (int i = 0; i < sequence.Length; i++)
-        {
-            if (sequence[i] != requiredSymbolSequence[i])
-                return;
-        }
-
-        Unlock();
-        Open(null);
     }
 
     public void Unlock()
@@ -154,7 +133,6 @@ public class Door : MonoBehaviour, IInteractable
     void Open(PlayerController player)
     {
         isOpen = true;
-
         if (isExitDoor)
         {
             GameManager.Instance?.CompleteLevel();
