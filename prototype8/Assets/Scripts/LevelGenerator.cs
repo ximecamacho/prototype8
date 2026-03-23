@@ -102,10 +102,10 @@ public class LevelGenerator : MonoBehaviour
             width = 24,
             height = 18,
             theme = LevelTheme.Castle,
-            enemyCount = 2,
+            enemyCount = 3,
             hasHiddenPassage = true,
             hasPuzzle = true,
-            enemySpeed = 3.2f,
+            enemySpeed = 3.8f,
             enemySightRange = 6f,
         };
         levels[4] = new LevelConfig
@@ -114,7 +114,7 @@ public class LevelGenerator : MonoBehaviour
             width = 26,
             height = 20,
             theme = LevelTheme.Castle,
-            enemyCount = 3,
+            enemyCount = 5,
             hasHiddenPassage = true,
             hasPuzzle = true,
             enemySpeed = 3.8f,

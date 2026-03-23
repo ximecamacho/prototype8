@@ -288,7 +288,7 @@ public class UIManager : MonoBehaviour
             "DeathIcon",
             new Vector2(0.3f, 0.35f),
             new Vector2(0.7f, 0.75f),
-            new Color(0.5f, 0.1f, 0.6f, 0.9f)
+            new Color(1.0f, 0.0f, 0.0f, 0.9f)
         );
         CreateUIRect(
             transfurPanel,
